@@ -7,6 +7,7 @@ var sockjs = require('sockjs');
 var https = require('https');
 var chalk = require('chalk');
 var fs = require('fs');
+var redis = require('redis');
 
 var log = require('./lib/log.js');
 var utils = require('./lib/utils.js');
@@ -14,12 +15,11 @@ var config = require('./config.json');
 var pack = require('./package.json');
 var path = require('path');
 
-
 /* Config */
 var port = utils.normalizePort(process.env.PORT || config.port);
 var app = express();
 var server;
-
+var redisclient = redis.createClient(6379, process.env.DB_PORT_6379_TCP_ADDR, {});
 
 /* Variables */
 var lastTime = [];
@@ -213,8 +213,23 @@ function handleSocket(user, message) {
             } else {
                 data.type = 'light';
                 data.subtxt = null;
-                data.message = utils.checkUser(clients, data.extra) ? 'You can\'t PM yourself' : 'User not found';
-                utils.sendBack(clients, data, user);
+                redisclient.exists('msgflag', function(err, existsreply) {
+                    if (existsreply) {
+                        redisclient.get('msgflag', function(err, flagval) {
+                            if (err) throw err;
+                            if (flagval == 'true') {
+                                data.message = utils.checkUser(clients, data.extra) ? 'Modified Message: You can\'t PM yourself' : 'User not found';
+                                utils.sendBack(clients, data, user);
+                            } else {
+                                data.message = utils.checkUser(clients, data.extra) ? 'You can\'t PM yourself' : 'User not found';
+                                utils.sendBack(clients, data, user);
+                            }
+                        });
+                    } else {
+                        data.message = utils.checkUser(clients, data.extra) ? 'You can\'t PM yourself' : 'User not found';
+                        utils.sendBack(clients, data, user);
+                    }
+                });
             }
             break;
 
